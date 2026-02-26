@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { GoogleGenAI } from '@google/genai';
-import { Send, Sparkles, Copy, CheckCircle2, Paperclip, X } from 'lucide-react';
+import { Send, Sparkles, Copy, CheckCircle2, Paperclip, X, Settings } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx, type ClassValue } from 'clsx';
@@ -23,6 +23,14 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [finalPrompt, setFinalPrompt] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [provider, setProvider] = useState<'google' | 'ollama'>('google');
+  const [ollamaUrl, setOllamaUrl] = useState('http://127.0.0.1:11434');
+  const [ollamaModel, setOllamaModel] = useState('');
+  const [ollamaModelsList, setOllamaModelsList] = useState<string[]>([]);
+  const [isLoadingModels, setIsLoadingModels] = useState(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   
   const [selectedImage, setSelectedImage] = useState<{ dataUrl: string, mimeType: string, base64Data: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -59,6 +67,31 @@ IMPORTANT: When you provide the final prompt, wrap it in a markdown code block w
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
+
+  useEffect(() => {
+    if (provider === 'ollama' && isSettingsOpen) {
+      setIsLoadingModels(true);
+      fetch(`${ollamaUrl.replace(/\/$/, '')}/api/tags`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.models && Array.isArray(data.models)) {
+            // Deduplicate model names just in case the API returns duplicates
+            const models = Array.from(new Set(data.models.map((m: any) => m.name))) as string[];
+            setOllamaModelsList(models);
+            if (models.length > 0 && !models.includes(ollamaModel)) {
+              setOllamaModel(models[0]);
+            }
+          }
+        })
+        .catch(err => {
+          console.error("Failed to fetch Ollama models:", err);
+          setOllamaModelsList([]);
+        })
+        .finally(() => {
+          setIsLoadingModels(false);
+        });
+    }
+  }, [provider, isSettingsOpen, ollamaUrl]);
 
   const extractPrompt = (text: string) => {
     const promptRegex = /```prompt\n([\s\S]*?)\n```/;
@@ -103,35 +136,77 @@ IMPORTANT: When you provide the final prompt, wrap it in a markdown code block w
     setInput('');
     setSelectedImage(null);
     
-    setMessages(prev => [...prev, { 
+    const newUserMessage: Message = { 
       id: Date.now().toString(), 
       role: 'user', 
       content: userMsg,
       image: currentImage?.dataUrl
-    }]);
+    };
+    
+    setMessages(prev => [...prev, newUserMessage]);
     
     setIsLoading(true);
 
     try {
-      let messagePayload: any = userMsg;
-      
-      if (currentImage) {
-        messagePayload = [];
-        if (userMsg) {
-          messagePayload.push({ text: userMsg });
-        } else {
-          messagePayload.push({ text: "Please analyze this image and help me craft a prompt based on it." });
-        }
-        messagePayload.push({
-          inlineData: {
-            mimeType: currentImage.mimeType,
-            data: currentImage.base64Data
+      let rawText = '';
+
+      if (provider === 'google') {
+        let messagePayload: any = userMsg;
+        
+        if (currentImage) {
+          messagePayload = [];
+          if (userMsg) {
+            messagePayload.push({ text: userMsg });
+          } else {
+            messagePayload.push({ text: "Please analyze this image and help me craft a prompt based on it." });
           }
+          messagePayload.push({
+            inlineData: {
+              mimeType: currentImage.mimeType,
+              data: currentImage.base64Data
+            }
+          });
+        }
+
+        const response = await chatRef.current.sendMessage({ message: messagePayload });
+        rawText = response.text || '';
+      } else {
+        // Ollama logic
+        const systemInstruction = `You are an expert prompt engineer and editorial assistant. Your goal is to help the user craft the perfect prompt for an AI model. 
+When the user provides an initial idea, you should enter a 'plan mode' where you ask 1-3 clarifying questions to refine the prompt. 
+Keep your tone professional, minimalist, and editorial. 
+Once you have enough information, provide the final, highly optimized prompt. 
+IMPORTANT: When you provide the final prompt, wrap it in a markdown code block with the language 'prompt' (e.g., \`\`\`prompt\nYour prompt here\n\`\`\`). This allows the UI to extract and display it beautifully. Do not use the 'prompt' language block for anything else.`;
+
+        const ollamaMessages = [
+          { role: 'system', content: systemInstruction },
+          ...messages.map(m => ({
+            role: m.role === 'model' ? 'assistant' : 'user',
+            content: m.content,
+            images: m.image ? [m.image.split(',')[1]] : undefined
+          })),
+          {
+            role: 'user',
+            content: userMsg || "Please analyze this image and help me craft a prompt based on it.",
+            images: currentImage ? [currentImage.base64Data] : undefined
+          }
+        ];
+
+        const res = await fetch(`${ollamaUrl.replace(/\/$/, '')}/api/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: ollamaModel,
+            messages: ollamaMessages,
+            stream: false
+          })
         });
+
+        if (!res.ok) throw new Error('Ollama API error');
+        const data = await res.json();
+        rawText = data.message?.content || '';
       }
 
-      const response = await chatRef.current.sendMessage({ message: messagePayload });
-      const rawText = response.text || '';
       const cleanText = extractPrompt(rawText);
       
       setMessages(prev => [...prev, { 
@@ -139,12 +214,19 @@ IMPORTANT: When you provide the final prompt, wrap it in a markdown code block w
         role: 'model', 
         content: cleanText 
       }]);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error sending message:', error);
+      
+      let errorMessage = "An error occurred while processing your request. Please try again.";
+      
+      if (provider === 'ollama' && error.message === 'Failed to fetch') {
+        errorMessage = "🚨 **Connection Error**\n\nCould not connect to Ollama. This usually happens for two reasons:\n\n1. **Ollama is not running.** Please start the Ollama app on your computer.\n2. **CORS is not enabled.** Because this is a web app, your browser blocks connections to local servers for security. You must restart Ollama from your terminal with CORS enabled:\n\n`OLLAMA_ORIGINS=\"*\" ollama serve`\n\n*(If you are on Windows, use Command Prompt and run: `set OLLAMA_ORIGINS=\"*\" && ollama serve`)*";
+      }
+      
       setMessages(prev => [...prev, { 
         id: (Date.now() + 1).toString(), 
         role: 'model', 
-        content: "An error occurred while processing your request. Please try again." 
+        content: errorMessage 
       }]);
     } finally {
       setIsLoading(false);
@@ -166,8 +248,13 @@ IMPORTANT: When you provide the final prompt, wrap it in a markdown code block w
         {/* Header */}
         <header className="px-8 py-6 border-b border-[#E2E2DE] flex items-center justify-between bg-[#F7F7F5]/80 backdrop-blur-sm z-10 absolute top-0 w-full">
           <h1 className="text-2xl font-light tracking-wide uppercase">Promptsmith</h1>
-          <div className="text-[10px] uppercase tracking-[0.2em] text-[#555] font-mono">
-            Plan Mode
+          <div className="flex items-center gap-4">
+            <div className="text-[10px] uppercase tracking-[0.2em] text-[#555] font-mono">
+              Plan Mode
+            </div>
+            <button onClick={() => setIsSettingsOpen(true)} className="text-[#555] hover:text-[#0F0F0F] transition-colors">
+              <Settings size={16} />
+            </button>
           </div>
         </header>
 
@@ -352,6 +439,154 @@ IMPORTANT: When you provide the final prompt, wrap it in a markdown code block w
           Promptsmith v1.0
         </div>
       </section>
+      {/* Settings Modal */}
+      <AnimatePresence>
+        {isSettingsOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-[#0F0F0F]/20 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+              className="bg-[#F7F7F5] border border-[#E2E2DE] shadow-2xl p-10 max-w-md w-full relative"
+            >
+              <button 
+                onClick={() => setIsSettingsOpen(false)}
+                className="absolute top-6 right-6 text-[#555] hover:text-[#0F0F0F] transition-colors"
+              >
+                <X size={20} strokeWidth={1.5} />
+              </button>
+              
+              <div className="mb-8">
+                <h2 className="text-2xl font-light tracking-wide uppercase">Settings</h2>
+                <div className="w-8 h-[1px] bg-[#0F0F0F] mt-4"></div>
+              </div>
+              
+              <div className="space-y-8">
+                <div>
+                  <label className="block text-[10px] uppercase tracking-[0.15em] font-mono text-[#555] mb-4">AI Provider</label>
+                  <div className="flex gap-8">
+                    <button 
+                      onClick={() => setProvider('google')}
+                      className={cn(
+                        "font-serif text-xl transition-all duration-300 relative pb-1",
+                        provider === 'google' ? "text-[#0F0F0F]" : "text-[#888] hover:text-[#555]"
+                      )}
+                    >
+                      Google Gemini
+                      {provider === 'google' && (
+                        <motion.div layoutId="provider-underline" className="absolute bottom-0 left-0 right-0 h-[1px] bg-[#0F0F0F]" />
+                      )}
+                    </button>
+                    <button 
+                      onClick={() => setProvider('ollama')}
+                      className={cn(
+                        "font-serif text-xl transition-all duration-300 relative pb-1",
+                        provider === 'ollama' ? "text-[#0F0F0F]" : "text-[#888] hover:text-[#555]"
+                      )}
+                    >
+                      Ollama
+                      {provider === 'ollama' && (
+                        <motion.div layoutId="provider-underline" className="absolute bottom-0 left-0 right-0 h-[1px] bg-[#0F0F0F]" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                <AnimatePresence>
+                  {provider === 'ollama' && (
+                    <motion.div 
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="space-y-6 overflow-visible"
+                    >
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.15em] font-mono text-[#555] mb-2">Ollama URL</label>
+                        <input 
+                          type="text" 
+                          value={ollamaUrl}
+                          onChange={(e) => setOllamaUrl(e.target.value)}
+                          className="w-full bg-transparent border-b border-[#E2E2DE] py-2 font-serif text-lg focus:outline-none focus:border-[#0F0F0F] transition-colors"
+                        />
+                      </div>
+                      <div className="relative">
+                        <label className="block text-[10px] uppercase tracking-[0.15em] font-mono text-[#555] mb-2">Model Name</label>
+                        
+                        <div className="relative">
+                          <button
+                            onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                            className="w-full bg-transparent border-b border-[#E2E2DE] py-2 font-serif text-lg text-left focus:outline-none focus:border-[#0F0F0F] transition-colors flex justify-between items-center"
+                          >
+                            <span className={!ollamaModel ? "text-[#888] italic" : ""}>
+                              {isLoadingModels ? "Detecting models..." : (ollamaModel || (ollamaModelsList.length === 0 ? "No models found" : "Select a model"))}
+                            </span>
+                            <motion.div animate={{ rotate: isDropdownOpen ? 180 : 0 }} className="text-[#555]">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                            </motion.div>
+                          </button>
+                          
+                          <AnimatePresence>
+                            {isDropdownOpen && (
+                              <motion.div
+                                initial={{ opacity: 0, y: 5 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: 5 }}
+                                className="absolute top-full left-0 w-full mt-1 bg-[#F7F7F5] border border-[#E2E2DE] shadow-lg z-50 max-h-48 overflow-y-auto"
+                              >
+                                {ollamaModelsList.length > 0 ? (
+                                  ollamaModelsList.map((model, index) => (
+                                    <button
+                                      key={`${model}-${index}`}
+                                      onClick={() => {
+                                        setOllamaModel(model);
+                                        setIsDropdownOpen(false);
+                                      }}
+                                      className="w-full text-left px-4 py-3 font-serif text-lg hover:bg-[#E2E2DE]/30 transition-colors border-b border-[#E2E2DE]/50 last:border-0"
+                                    >
+                                      {model}
+                                    </button>
+                                  ))
+                                ) : (
+                                  <div className="px-4 py-3 font-serif text-lg text-[#888] italic">
+                                    {isLoadingModels ? "Loading..." : "No models detected"}
+                                  </div>
+                                )}
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                      </div>
+                      
+                      <div className="pt-2">
+                        <p className="text-xs font-mono text-[#888] leading-relaxed">
+                          Note: To use Ollama from this web app, you must start it with CORS enabled:
+                          <br/>
+                          <code className="bg-[#E2E2DE]/50 px-1 py-0.5 rounded text-[#0F0F0F] mt-1 inline-block">OLLAMA_ORIGINS="*" ollama serve</code>
+                        </p>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+              
+              <div className="mt-10 flex justify-end">
+                <button 
+                  onClick={() => setIsSettingsOpen(false)}
+                  className="bg-[#0F0F0F] text-[#F7F7F5] px-8 py-3 font-mono text-[10px] uppercase tracking-[0.2em] hover:bg-[#333] transition-colors"
+                >
+                  Done
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </main>
   );
 }
