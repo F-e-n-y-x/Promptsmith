@@ -85,6 +85,16 @@ app.get('/api/config', (req, res) => {
   });
 });
 
+// POST verify master code
+app.post('/api/verify-master-code', (req, res) => {
+  const { code } = req.body;
+  if (!process.env.MASTER_CODE) {
+    return res.json({ valid: false });
+  }
+  const isValid = code === process.env.MASTER_CODE;
+  res.json({ valid: isValid });
+});
+
 // GET specific session data
 app.get('/api/history/:id', (req, res) => {
   const { id } = req.params;

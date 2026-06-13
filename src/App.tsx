@@ -286,6 +286,7 @@ export default function App() {
   });
   
   const [serverDefaultModel, setServerDefaultModel] = useState('Loading...');
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [freeModels, setFreeModels] = useState<{id: string, name: string}[]>([]);
   const [isLoadingOpenRouterModels, setIsLoadingOpenRouterModels] = useState(false);
   const [pollinationsModel, setPollinationsModel] = useState(
@@ -438,6 +439,30 @@ CORE BEHAVIOR:
     };
     fetchConfig();
   }, []);
+
+  useEffect(() => {
+    if (!masterCode) return;
+    
+    const verifyCode = async () => {
+      try {
+        const res = await fetch('/api/verify-master-code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: masterCode })
+        });
+        const data = await res.json();
+        if (data.valid) {
+          setToastMessage('Master Code Verified');
+          setTimeout(() => setToastMessage(null), 3000);
+        }
+      } catch (err) {
+        console.error('Failed to verify master code', err);
+      }
+    };
+
+    const timeout = setTimeout(verifyCode, 600);
+    return () => clearTimeout(timeout);
+  }, [masterCode]);
 
   useEffect(() => {
     localStorage.setItem('promptsmith_provider', provider);
@@ -889,6 +914,20 @@ CORE BEHAVIOR:
   return (
     <main className="flex h-screen w-full bg-[#F7F7F5] text-[#0F0F0F] font-serif overflow-hidden">
       <MarkdownStyles />
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {toastMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, x: 0 }}
+            animate={{ opacity: 1, y: 0, x: 0 }}
+            exit={{ opacity: 0, y: 50, x: 0 }}
+            className="fixed bottom-6 right-6 bg-[#0F0F0F] text-[#F7F7F5] px-6 py-4 shadow-2xl z-[100] flex items-center gap-4"
+          >
+            <div className="w-2 h-2 rounded-full bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.6)] animate-pulse"></div>
+            <span className="font-mono text-xs uppercase tracking-widest">{toastMessage}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {/* Left Pane: Chat */}
       <section className="flex flex-col w-full lg:w-1/2 h-full border-r border-[#E2E2DE] relative bg-[#F7F7F5]">
         {/* Header */}
