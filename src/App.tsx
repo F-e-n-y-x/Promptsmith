@@ -286,7 +286,7 @@ export default function App() {
   });
   
   const [serverDefaultModel, setServerDefaultModel] = useState('Loading...');
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [verificationStatus, setVerificationStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [freeModels, setFreeModels] = useState<{id: string, name: string}[]>([]);
   const [isLoadingOpenRouterModels, setIsLoadingOpenRouterModels] = useState(false);
   const [pollinationsModel, setPollinationsModel] = useState(
@@ -440,29 +440,29 @@ CORE BEHAVIOR:
     fetchConfig();
   }, []);
 
-  useEffect(() => {
+  const verifyMasterCode = async () => {
     if (!masterCode) return;
-    
-    const verifyCode = async () => {
-      try {
-        const res = await fetch('/api/verify-master-code', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code: masterCode })
-        });
-        const data = await res.json();
-        if (data.valid) {
-          setToastMessage('Master Code Verified');
-          setTimeout(() => setToastMessage(null), 3000);
-        }
-      } catch (err) {
-        console.error('Failed to verify master code', err);
+    setVerificationStatus('loading');
+    try {
+      const res = await fetch('/api/verify-master-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: masterCode })
+      });
+      const data = await res.json();
+      if (data.valid) {
+        setVerificationStatus('success');
+        setTimeout(() => setVerificationStatus('idle'), 3000);
+      } else {
+        setVerificationStatus('error');
+        setTimeout(() => setVerificationStatus('idle'), 3000);
       }
-    };
-
-    const timeout = setTimeout(verifyCode, 600);
-    return () => clearTimeout(timeout);
-  }, [masterCode]);
+    } catch (err) {
+      console.error('Failed to verify master code', err);
+      setVerificationStatus('error');
+      setTimeout(() => setVerificationStatus('idle'), 3000);
+    }
+  };
 
   useEffect(() => {
     localStorage.setItem('promptsmith_provider', provider);
@@ -914,20 +914,6 @@ CORE BEHAVIOR:
   return (
     <main className="flex h-screen w-full bg-[#F7F7F5] text-[#0F0F0F] font-serif overflow-hidden">
       <MarkdownStyles />
-      {/* Toast Notification */}
-      <AnimatePresence>
-        {toastMessage && (
-          <motion.div
-            initial={{ opacity: 0, y: 50, x: 0 }}
-            animate={{ opacity: 1, y: 0, x: 0 }}
-            exit={{ opacity: 0, y: 50, x: 0 }}
-            className="fixed bottom-6 right-6 bg-[#0F0F0F] text-[#F7F7F5] px-6 py-4 shadow-2xl z-[100] flex items-center gap-4"
-          >
-            <div className="w-2 h-2 rounded-full bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.6)] animate-pulse"></div>
-            <span className="font-mono text-xs uppercase tracking-widest">{toastMessage}</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
       {/* Left Pane: Chat */}
       <section className="flex flex-col w-full lg:w-1/2 h-full border-r border-[#E2E2DE] relative bg-[#F7F7F5]">
         {/* Header */}
@@ -1164,16 +1150,37 @@ CORE BEHAVIOR:
                     >
                       <div>
                         <label className="block text-[10px] uppercase tracking-[0.15em] font-mono text-[#555] mb-2">Master Code</label>
-                        <input 
-                          type="password" 
-                          value={masterCode}
-                          onChange={(e) => setMasterCode(e.target.value)}
-                          placeholder="Bypass limit code..."
-                          className="w-full bg-transparent border-b border-[#E2E2DE] py-2 font-serif text-lg focus:outline-none focus:border-[#0F0F0F] transition-colors"
-                        />
-                        <p className="text-xs font-mono text-[#888] mt-2">
-                          Enter the master code to bypass the public usage limit.
-                        </p>
+                        <div className="flex items-end gap-4 border-b border-[#E2E2DE] pb-2">
+                          <input 
+                            type="password" 
+                            value={masterCode}
+                            onChange={(e) => setMasterCode(e.target.value)}
+                            placeholder="Bypass limit code..."
+                            className="flex-1 bg-transparent font-serif text-lg focus:outline-none focus:border-[#0F0F0F] transition-colors"
+                          />
+                          <button 
+                            onClick={verifyMasterCode}
+                            disabled={verificationStatus === 'loading'}
+                            className="px-4 py-1.5 text-xs font-mono uppercase tracking-wider bg-[#0F0F0F] text-[#F7F7F5] hover:bg-[#333] transition-colors disabled:opacity-50"
+                          >
+                            {verificationStatus === 'loading' ? 'Checking...' : 'Verify'}
+                          </button>
+                        </div>
+                        {verificationStatus === 'success' && (
+                          <motion.p initial={{opacity:0, y:-5}} animate={{opacity:1, y:0}} className="text-xs font-mono text-green-600 mt-2 flex items-center gap-1">
+                            <Sparkles size={12} /> Master Code Verified! Limits unlocked.
+                          </motion.p>
+                        )}
+                        {verificationStatus === 'error' && (
+                          <motion.p initial={{opacity:0, y:-5}} animate={{opacity:1, y:0}} className="text-xs font-mono text-red-500 mt-2 flex items-center gap-1">
+                            <X size={12} /> Invalid code. Please try again.
+                          </motion.p>
+                        )}
+                        {verificationStatus === 'idle' && (
+                          <p className="text-xs font-mono text-[#888] mt-2">
+                            Enter the master code to bypass the public usage limit.
+                          </p>
+                        )}
                       </div>
                       <div>
                         <label className="block text-[10px] uppercase tracking-[0.15em] font-mono text-[#555] mb-2">Custom API Key</label>
