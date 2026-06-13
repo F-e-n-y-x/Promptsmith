@@ -3,10 +3,10 @@ FROM node:20-alpine AS build
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Copy package.json ONLY (ignores package-lock.json to prevent cross-platform esbuild conflicts)
+COPY package.json ./
 
-# Install dependencies
+# Install dependencies for the current platform (Alpine Linux)
 RUN npm install
 
 # Copy source files
@@ -20,8 +20,8 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Copy package files and install only production dependencies
-COPY package*.json ./
+# Copy package.json ONLY to prevent cross-platform conflicts
+COPY package.json ./
 RUN npm install --production
 
 # Copy built frontend
