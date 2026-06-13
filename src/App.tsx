@@ -289,6 +289,7 @@ export default function App() {
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isPollinationsDropdownOpen, setIsPollinationsDropdownOpen] = useState(false);
+  const [ollamaError, setOllamaError] = useState<string | null>(null);
   
   const [sessionId, setSessionId] = useState(() => Date.now().toString());
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
@@ -313,33 +314,65 @@ CORE BEHAVIOR:
     const saved = localStorage.getItem('promptsmith_sessions');
     if (saved) {
       try {
-        setSessions(JSON.parse(saved));
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          Promise.all(parsed.map(s => 
+            fetch('/api/history', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(s)
+            })
+          )).then(() => {
+            localStorage.removeItem('promptsmith_sessions');
+            loadHistoryIndex();
+          });
+          return;
+        }
       } catch (e) {}
     }
+    loadHistoryIndex();
   }, []);
+
+  const loadHistoryIndex = () => {
+    fetch('/api/history')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setSessions(data);
+        }
+      })
+      .catch(err => console.error('Failed to load history', err));
+  };
 
   useEffect(() => {
     if (messages.length > 1) {
-      setSessions(prev => {
-        const existingIdx = prev.findIndex(s => s.id === sessionId);
-        const title = messages.find(m => m.role === 'user')?.content?.substring(0, 30) || 'New Prompt';
-        const currentSession: Session = {
-          id: sessionId,
-          date: new Date().toISOString(),
-          title,
-          messages,
-          finalPrompt
-        };
-        
-        const newSessions = [...prev];
-        if (existingIdx >= 0) {
-          newSessions[existingIdx] = currentSession;
-        } else {
-          newSessions.unshift(currentSession);
+      const title = messages.find(m => m.role === 'user')?.content?.substring(0, 30) || 'New Prompt';
+      const currentSession: Session = {
+        id: sessionId,
+        date: new Date().toISOString(),
+        title,
+        messages,
+        finalPrompt
+      };
+      
+      fetch('/api/history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(currentSession)
+      }).then(res => res.json()).then(data => {
+        if (data.success && data.session) {
+          setSessions(prev => {
+            const existingIdx = prev.findIndex(s => s.id === sessionId);
+            const newSessions = [...prev];
+            if (existingIdx >= 0) {
+              newSessions[existingIdx] = data.session;
+            } else {
+              newSessions.unshift(data.session);
+            }
+            return newSessions;
+          });
         }
-        localStorage.setItem('promptsmith_sessions', JSON.stringify(newSessions));
-        return newSessions;
-      });
+      }).catch(err => console.error('Failed to save session', err));
     }
   }, [messages, finalPrompt, sessionId]);
 
@@ -375,6 +408,7 @@ CORE BEHAVIOR:
   useEffect(() => {
     if (provider === 'ollama' && isSettingsOpen) {
       setIsLoadingModels(true);
+      setOllamaError(null);
       fetch(`${ollamaUrl.replace(/\/$/, '')}/api/tags`)
         .then(res => res.json())
         .then(data => {
@@ -390,6 +424,7 @@ CORE BEHAVIOR:
         .catch(err => {
           console.error("Failed to fetch Ollama models:", err);
           setOllamaModelsList([]);
+          setOllamaError("Could not connect to Ollama. Make sure it's running with OLLAMA_ORIGINS=\"*\"");
         })
         .finally(() => {
           setIsLoadingModels(false);
@@ -408,34 +443,48 @@ CORE BEHAVIOR:
     setIsLibraryOpen(false);
   };
 
-  const loadSession = (session: Session) => {
-    setSessionId(session.id);
-    setMessages(session.messages);
-    setFinalPrompt(session.finalPrompt);
-    setIsLibraryOpen(false);
+  const loadSession = async (session: Session) => {
+    try {
+      const res = await fetch(`/api/history/${session.id}`);
+      if (res.ok) {
+        const fullSession = await res.json();
+        setSessionId(fullSession.id);
+        setMessages(fullSession.messages || []);
+        setFinalPrompt(fullSession.finalPrompt);
+        setIsLibraryOpen(false);
+      }
+    } catch (err) {
+      console.error('Failed to load full session', err);
+    }
   };
 
   const exportSession = async (session: Session) => {
     try {
+      const res = await fetch(`/api/history/${session.id}`);
+      let fullSession = session;
+      if (res.ok) {
+        fullSession = await res.json();
+      }
+
       const zip = new JSZip();
       
       // Format date as DD-MM-YYYY
-      const dateObj = new Date(session.date);
+      const dateObj = new Date(fullSession.date);
       const day = String(dateObj.getDate()).padStart(2, '0');
       const month = String(dateObj.getMonth() + 1).padStart(2, '0');
       const year = dateObj.getFullYear();
       const dateStr = `${day}-${month}-${year}`;
       
-      const safeTitle = session.title.replace(/[^a-z0-9]/gi, '_').substring(0, 30);
+      const safeTitle = fullSession.title.replace(/[^a-z0-9]/gi, '_').substring(0, 30);
       const folderName = `${dateStr}_${safeTitle}`;
       
       const folder = zip.folder(folderName);
       if (!folder) return;
 
-      folder.file("session_data.json", JSON.stringify(session, null, 2));
-      folder.file("final_prompt.md", session.finalPrompt || "No prompt generated yet.");
+      folder.file("session_data.json", JSON.stringify(fullSession, null, 2));
+      folder.file("final_prompt.md", fullSession.finalPrompt || "No prompt generated yet.");
       
-      const chatHistory = session.messages.map(m => `**${m.role === 'user' ? 'User' : 'Assistant'}**:\n${m.content}`).join('\n\n---\n\n');
+      const chatHistory = (fullSession.messages || []).map(m => `**${m.role === 'user' ? 'User' : 'Assistant'}**:\n${m.content || '[Image/Options]'}`).join('\n\n---\n\n');
       folder.file("chat_history.md", chatHistory);
 
       const content = await zip.generateAsync({ type: "blob" });
@@ -452,16 +501,17 @@ CORE BEHAVIOR:
     }
   };
 
-  const deleteSession = (id: string, e: React.MouseEvent) => {
+  const deleteSession = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (window.confirm('Are you sure you want to delete this session?')) {
-      setSessions(prev => {
-        const newSessions = prev.filter(s => s.id !== id);
-        localStorage.setItem('promptsmith_sessions', JSON.stringify(newSessions));
-        return newSessions;
-      });
-      if (sessionId === id) {
-        startNewSession();
+      try {
+        await fetch(`/api/history/${id}`, { method: 'DELETE' });
+        setSessions(prev => prev.filter(s => s.id !== id));
+        if (sessionId === id) {
+          startNewSession();
+        }
+      } catch (err) {
+        console.error('Failed to delete session', err);
       }
     }
   };
@@ -1024,6 +1074,12 @@ CORE BEHAVIOR:
                           </AnimatePresence>
                         </div>
                       </div>
+                      
+                      {ollamaError && (
+                        <div className="pt-2 text-red-600 text-sm font-mono bg-red-50 p-3 rounded border border-red-200">
+                          {ollamaError}
+                        </div>
+                      )}
                       
                       <div className="pt-2">
                         <p className="text-xs font-mono text-[#888] leading-relaxed">

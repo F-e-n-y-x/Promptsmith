@@ -12,18 +12,26 @@ RUN npm install
 # Copy source files
 COPY . .
 
-# Build the project
+# Build the frontend project
 RUN npm run build
 
 # Production stage
-FROM nginx:alpine
+FROM node:20-alpine
 
-# Copy build artifacts from build stage to nginx
-COPY --from=build /app/dist /usr/share/nginx/html
+WORKDIR /app
 
-# Copy custom nginx config if you have one, otherwise default is fine
-# COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Copy package files and install only production dependencies
+COPY package*.json ./
+RUN npm install --production
 
-EXPOSE 80
+# Copy built frontend
+COPY --from=build /app/dist ./dist
 
-CMD ["nginx", "-g", "daemon off;"]
+# Copy backend files
+COPY server.ts ./
+# Copy tsconfig so tsx works correctly
+COPY tsconfig.json ./
+
+EXPOSE 3001
+
+CMD ["npm", "run", "start"]

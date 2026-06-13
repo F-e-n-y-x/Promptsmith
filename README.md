@@ -8,9 +8,11 @@ Promptsmith is a minimalist, editorial-style prompt refinement tool. It acts as 
 - **Plan Mode Chat:** An interactive assistant that helps refine your ideas through targeted questions before generating the final prompt.
 - **Multimodal Support:** Upload sketches, screenshots, or reference images alongside your text to provide visual context to the AI.
 - **Auto-Extraction:** The final optimized prompt is automatically detected and beautifully presented in a dedicated output pane with a one-click copy button.
-- **Dual AI Providers:** 
+- **Tri-Provider AI Support:** 
   - **Google Gemini:** Powered by the Gemini 3 Flash Preview model for lightning-fast, high-quality reasoning.
-  - **Ollama (Local):** Full support for running local, private models via Ollama. Auto-detects installed models and seamlessly switches context.
+  - **Ollama (Local):** Full support for running local, private models via Ollama.
+  - **Pollinations AI:** Access to various top-tier models (GPT-4o, Claude, DeepSeek) through Pollinations.
+- **Persistent Local History:** Your sessions, images, and prompts are securely saved to a local `history` folder on your hard drive, bypassing browser limits.
 - **Docker Ready:** Includes a lightweight, multi-architecture Dockerfile for easy deployment.
 
 ## 🚀 Getting Started
@@ -33,7 +35,7 @@ Promptsmith is a minimalist, editorial-style prompt refinement tool. It acts as 
    GEMINI_API_KEY="your_api_key_here"
    ```
 
-3. Start the development server:
+3. Start the development server (this automatically starts both the React frontend and the Express backend for file saving):
    ```bash
    npm run dev
    ```
@@ -71,9 +73,10 @@ docker run -p 8080:80 promptsmith
 
 ## 🛠️ Tech Stack
 
-- **Framework:** React 19 + Vite
+- **Framework:** React 19 + Vite + Express (Backend)
 - **Styling:** Tailwind CSS v4
 - **Animation:** Motion (Framer Motion)
 - **Icons:** Lucide React
 - **Markdown:** React Markdown
 - **AI SDK:** `@google/genai`
+- **History Storage:** Node.js `fs` module
