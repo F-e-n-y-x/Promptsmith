@@ -32,6 +32,6 @@ COPY server.ts ./
 # Copy tsconfig so tsx works correctly
 COPY tsconfig.json ./
 
-EXPOSE 3001
+EXPOSE 80
 
 CMD ["npm", "run", "start"]

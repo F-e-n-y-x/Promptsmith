@@ -9,7 +9,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = 3001;
+const PORT = process.env.PORT || 80;
 
 // Increase limit to accommodate large base64 images
 app.use(express.json({ limit: '50mb' }));
