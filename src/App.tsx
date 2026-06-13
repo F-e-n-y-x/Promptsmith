@@ -772,10 +772,19 @@ CORE BEHAVIOR:
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
           // If a text-only model is used but image is provided, OpenRouter typically throws a 400 with a specific modality error
-          if (res.status === 400 && errData.error?.message?.toLowerCase().includes('image')) {
+          if (res.status === 400 && (errData.details || '').toLowerCase().includes('image')) {
             throw new Error('MODEL_IMAGE_ERROR');
           }
-          throw new Error(errData.error?.message || 'OpenRouter API error');
+          
+          let parsedDetails = errData.details || errData.error || 'OpenRouter API error';
+          try {
+            const parsed = JSON.parse(errData.details);
+            if (parsed.error?.message) {
+              parsedDetails = parsed.error.message;
+            }
+          } catch(e) {}
+
+          throw new Error(parsedDetails);
         }
         
         const data = await res.json();
@@ -844,7 +853,7 @@ CORE BEHAVIOR:
     } catch (error: any) {
       console.error('Error sending message:', error);
       
-      let errorMessage = "An error occurred while processing your request. Please try again.";
+      let errorMessage = `An error occurred: ${error.message || 'Unknown error'}. Please try again.`;
       
       if (error.message === 'LIMIT_REACHED') {
         errorMessage = "⏳ **Usage Limit Reached!**\n\nYou've hit the public usage limit. Please open **Settings** (gear icon) and enter the **Master Code** or your own **OpenRouter API Key** to continue.";
