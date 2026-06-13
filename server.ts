@@ -9,7 +9,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 80;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 80;
 
 // Increase limit to accommodate large base64 images
 app.use(express.json({ limit: '50mb' }));
@@ -88,10 +88,10 @@ app.get('/api/config', (req, res) => {
 // POST verify master code
 app.post('/api/verify-master-code', (req, res) => {
   const { code } = req.body;
-  if (!process.env.MASTER_CODE) {
+  if (!process.env.MASTER_CODE || !code) {
     return res.json({ valid: false });
   }
-  const isValid = code === process.env.MASTER_CODE;
+  const isValid = code.trim() === process.env.MASTER_CODE.trim();
   res.json({ valid: isValid });
 });
 
@@ -182,7 +182,7 @@ app.post('/api/chat/openrouter', async (req, res) => {
 
   if (!apiKeyToUse) {
     // If no custom key, check master code
-    if (masterCode && masterCode === process.env.MASTER_CODE) {
+    if (masterCode && masterCode.trim() === process.env.MASTER_CODE?.trim()) {
       apiKeyToUse = process.env.OPENROUTER_API_KEY;
     } else {
       // If no master code, check limits
