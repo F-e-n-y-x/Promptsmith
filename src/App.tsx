@@ -1070,7 +1070,7 @@ CORE BEHAVIOR:
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.95, opacity: 0, y: 10 }}
               transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-              className="bg-[#F7F7F5] border border-[#E2E2DE] shadow-2xl p-10 max-w-md w-full relative"
+              className="bg-[#F7F7F5] border border-[#E2E2DE] shadow-2xl p-10 max-w-2xl w-full relative"
             >
               <button 
                 onClick={() => setIsSettingsOpen(false)}
