@@ -267,8 +267,17 @@ export default function App() {
   const [copied, setCopied] = useState(false);
   
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [provider, setProvider] = useState<'google' | 'ollama' | 'pollinations'>(
-    () => (localStorage.getItem('promptsmith_provider') as 'google' | 'ollama' | 'pollinations') || 'google'
+  const [provider, setProvider] = useState<'openrouter' | 'google' | 'ollama' | 'pollinations'>(
+    () => (localStorage.getItem('promptsmith_provider') as 'openrouter' | 'google' | 'ollama' | 'pollinations') || 'openrouter'
+  );
+  const [masterCode, setMasterCode] = useState(
+    () => localStorage.getItem('promptsmith_masterCode') || ''
+  );
+  const [openrouterApiKey, setOpenrouterApiKey] = useState(
+    () => localStorage.getItem('promptsmith_openrouterApiKey') || ''
+  );
+  const [openrouterModel, setOpenrouterModel] = useState(
+    () => localStorage.getItem('promptsmith_openrouterModel') || 'openai/gpt-4o-mini'
   );
   const [pollinationsModel, setPollinationsModel] = useState(
     () => localStorage.getItem('promptsmith_pollinationsModel') || 'openai'
@@ -383,7 +392,10 @@ CORE BEHAVIOR:
     localStorage.setItem('promptsmith_ollamaModel', ollamaModel);
     localStorage.setItem('promptsmith_pollinationsModel', pollinationsModel);
     localStorage.setItem('promptsmith_pollinationsApiKey', pollinationsApiKey);
-  }, [provider, geminiApiKey, ollamaUrl, ollamaModel, pollinationsModel, pollinationsApiKey]);
+    localStorage.setItem('promptsmith_openrouterApiKey', openrouterApiKey);
+    localStorage.setItem('promptsmith_openrouterModel', openrouterModel);
+    localStorage.setItem('promptsmith_masterCode', masterCode);
+  }, [provider, geminiApiKey, ollamaUrl, ollamaModel, pollinationsModel, pollinationsApiKey, openrouterApiKey, openrouterModel, masterCode]);
 
   useEffect(() => {
     // Initial greeting
@@ -619,6 +631,44 @@ CORE BEHAVIOR:
           }
         });
         rawText = response.text || '';
+      } else if (provider === 'openrouter') {
+        const openrouterMessages = [
+          { role: 'system', content: SYSTEM_INSTRUCTION },
+          ...updatedMessages.filter(m => m.id !== '1').map(m => {
+            const contentArray: any[] = [];
+            if (m.rawText || m.content) {
+              contentArray.push({ type: "text", text: m.rawText || m.content });
+            } else if (m.image) {
+              contentArray.push({ type: "text", text: "Analyze this image." });
+            }
+            if (m.image) {
+              contentArray.push({ type: "image_url", image_url: { url: m.image } });
+            }
+            return {
+              role: m.role === 'model' ? 'assistant' : 'user',
+              content: contentArray
+            };
+          })
+        ];
+
+        const res = await fetch('/api/chat/openrouter', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: openrouterModel,
+            messages: openrouterMessages,
+            customApiKey: openrouterApiKey,
+            masterCode: masterCode
+          })
+        });
+
+        if (res.status === 429) {
+          throw new Error('LIMIT_REACHED');
+        }
+
+        if (!res.ok) throw new Error('OpenRouter API error');
+        const data = await res.json();
+        rawText = data.choices?.[0]?.message?.content || '';
       } else if (provider === 'ollama') {
         // Ollama logic
         const ollamaMessages = [
@@ -685,7 +735,9 @@ CORE BEHAVIOR:
       
       let errorMessage = "An error occurred while processing your request. Please try again.";
       
-      if (error.message === 'Missing Gemini API Key') {
+      if (error.message === 'LIMIT_REACHED') {
+        errorMessage = "⏳ **Usage Limit Reached!**\n\nYou've hit the public usage limit. Please open **Settings** (gear icon) and enter the **Master Code** or your own **OpenRouter API Key** to continue.";
+      } else if (error.message === 'Missing Gemini API Key') {
         errorMessage = "🚨 **Missing API Key**\n\nPlease open Settings (gear icon) and enter your Google Gemini API Key to continue.";
       } else if (provider === 'ollama' && error.message === 'Failed to fetch') {
         errorMessage = "🚨 **Connection Error**\n\nCould not connect to Ollama. This usually happens for two reasons:\n\n1. **Ollama is not running.** Please start the Ollama app on your computer.\n2. **CORS is not enabled.** Because this is a web app, your browser blocks connections to local servers for security. You must restart Ollama from your terminal with CORS enabled:\n\n`OLLAMA_ORIGINS=\"*\" ollama serve`\n\n*(If you are on Windows, use Command Prompt and run: `set OLLAMA_ORIGINS=\"*\" && ollama serve`)*";
@@ -948,6 +1000,18 @@ CORE BEHAVIOR:
                   <label className="block text-[10px] uppercase tracking-[0.15em] font-mono text-[#555] mb-4">AI Provider</label>
                   <div className="flex gap-8">
                     <button 
+                      onClick={() => setProvider('openrouter')}
+                      className={cn(
+                        "font-serif text-xl transition-all duration-300 relative pb-1",
+                        provider === 'openrouter' ? "text-[#0F0F0F]" : "text-[#888] hover:text-[#555]"
+                      )}
+                    >
+                      OpenRouter
+                      {provider === 'openrouter' && (
+                        <motion.div layoutId="provider-underline" className="absolute bottom-0 left-0 right-0 h-[1px] bg-[#0F0F0F]" />
+                      )}
+                    </button>
+                    <button 
                       onClick={() => setProvider('google')}
                       className={cn(
                         "font-serif text-xl transition-all duration-300 relative pb-1",
@@ -987,6 +1051,52 @@ CORE BEHAVIOR:
                 </div>
 
                 <AnimatePresence mode="wait">
+                  {provider === 'openrouter' && (
+                    <motion.div 
+                      key="openrouter-settings"
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="space-y-6 overflow-visible"
+                    >
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.15em] font-mono text-[#555] mb-2">Master Code</label>
+                        <input 
+                          type="password" 
+                          value={masterCode}
+                          onChange={(e) => setMasterCode(e.target.value)}
+                          placeholder="Bypass limit code..."
+                          className="w-full bg-transparent border-b border-[#E2E2DE] py-2 font-serif text-lg focus:outline-none focus:border-[#0F0F0F] transition-colors"
+                        />
+                        <p className="text-xs font-mono text-[#888] mt-2">
+                          Enter the master code to bypass the public usage limit.
+                        </p>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.15em] font-mono text-[#555] mb-2">Custom API Key</label>
+                        <input 
+                          type="password" 
+                          value={openrouterApiKey}
+                          onChange={(e) => setOpenrouterApiKey(e.target.value)}
+                          placeholder="sk-or-v1-..."
+                          className="w-full bg-transparent border-b border-[#E2E2DE] py-2 font-serif text-lg focus:outline-none focus:border-[#0F0F0F] transition-colors"
+                        />
+                        <p className="text-xs font-mono text-[#888] mt-2">
+                          Provide your own API key to bypass limits completely.
+                        </p>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.15em] font-mono text-[#555] mb-2">Model</label>
+                        <input 
+                          type="text" 
+                          value={openrouterModel}
+                          onChange={(e) => setOpenrouterModel(e.target.value)}
+                          placeholder="openai/gpt-4o-mini"
+                          className="w-full bg-transparent border-b border-[#E2E2DE] py-2 font-serif text-lg focus:outline-none focus:border-[#0F0F0F] transition-colors"
+                        />
+                      </div>
+                    </motion.div>
+                  )}
                   {provider === 'google' && (
                     <motion.div 
                       key="google-settings"
