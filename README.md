@@ -61,14 +61,22 @@ set OLLAMA_ORIGINS="*" && ollama serve
 
 ## 🐳 Docker Deployment
 
-Promptsmith includes a multi-stage Dockerfile that builds the static assets and serves them using a lightweight Nginx container.
+Promptsmith includes a multi-stage Dockerfile that builds the static assets and serves them using a Node.js backend.
+
+The easiest way to run Promptsmith is to pull the automatically built image from the GitHub Container Registry:
 
 ```bash
-# Build the image
-docker build -t promptsmith .
+# Pull the latest image
+docker pull ghcr.io/f-e-n-y-x/promptsmith:main
 
-# Run the container
-docker run -p 8080:80 promptsmith
+# Run the container (with persistent history)
+docker run -d -p 8080:3001 -v ./history:/app/history ghcr.io/f-e-n-y-x/promptsmith:main
+```
+
+Alternatively, you can build it locally using `docker-compose`:
+
+```bash
+docker-compose up -d --build
 ```
 
 ## 🛠️ Tech Stack
