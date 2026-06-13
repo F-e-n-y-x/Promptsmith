@@ -287,6 +287,7 @@ export default function App() {
   
   const [serverDefaultModel, setServerDefaultModel] = useState('Loading...');
   const [verificationStatus, setVerificationStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [isMasterCodeValid, setIsMasterCodeValid] = useState(false);
   const [freeModels, setFreeModels] = useState<{id: string, name: string}[]>([]);
   const [isLoadingOpenRouterModels, setIsLoadingOpenRouterModels] = useState(false);
   const [pollinationsModel, setPollinationsModel] = useState(
@@ -452,17 +453,40 @@ CORE BEHAVIOR:
       const data = await res.json();
       if (data.valid) {
         setVerificationStatus('success');
+        setIsMasterCodeValid(true);
         setTimeout(() => setVerificationStatus('idle'), 3000);
       } else {
         setVerificationStatus('error');
+        setIsMasterCodeValid(false);
         setTimeout(() => setVerificationStatus('idle'), 3000);
       }
     } catch (err) {
       console.error('Failed to verify master code', err);
       setVerificationStatus('error');
+      setIsMasterCodeValid(false);
       setTimeout(() => setVerificationStatus('idle'), 3000);
     }
   };
+
+  useEffect(() => {
+    if (!masterCode) {
+      setIsMasterCodeValid(false);
+      return;
+    }
+    const verify = async () => {
+      try {
+        const res = await fetch('/api/verify-master-code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: masterCode })
+        });
+        const data = await res.json();
+        setIsMasterCodeValid(data.valid);
+      } catch (err) {}
+    };
+    const t = setTimeout(verify, 500);
+    return () => clearTimeout(t);
+  }, [masterCode]);
 
   useEffect(() => {
     localStorage.setItem('promptsmith_provider', provider);
@@ -929,6 +953,15 @@ CORE BEHAVIOR:
             </button>
           </div>
           <div className="flex items-center gap-4">
+            {isMasterCodeValid && (
+              <motion.div 
+                initial={{ opacity: 0, x: 10 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="text-[10px] uppercase tracking-[0.2em] text-green-600 font-mono flex items-center gap-1"
+              >
+                <Sparkles size={12} /> Master Prompt
+              </motion.div>
+            )}
             <div className="text-[10px] uppercase tracking-[0.2em] text-[#555] font-mono">
               Plan Mode
             </div>
