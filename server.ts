@@ -78,6 +78,13 @@ app.get('/api/history', (req, res) => {
   res.json(index);
 });
 
+// GET config
+app.get('/api/config', (req, res) => {
+  res.json({
+    DEFAULT_OPENROUTER_MODEL: process.env.DEFAULT_OPENROUTER_MODEL || 'google/gemini-2.0-flash-lite-preview-02-05:free'
+  });
+});
+
 // GET specific session data
 app.get('/api/history/:id', (req, res) => {
   const { id } = req.params;

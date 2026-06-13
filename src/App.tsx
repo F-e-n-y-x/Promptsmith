@@ -276,10 +276,16 @@ export default function App() {
   const [openrouterApiKey, setOpenrouterApiKey] = useState(
     () => localStorage.getItem('promptsmith_openrouterApiKey') || ''
   );
-  const [openrouterModel, setOpenrouterModel] = useState(
-    () => localStorage.getItem('promptsmith_openrouterModel') || 'google/gemini-2.0-flash-lite-preview-02-05:free'
-  );
+  const [openrouterModel, setOpenrouterModel] = useState(() => {
+    const saved = localStorage.getItem('promptsmith_openrouterModel');
+    // If it's the old hardcoded default, reset it so it uses the server default
+    if (saved === 'google/gemini-2.0-flash-lite-preview-02-05:free' || saved === 'openai/gpt-4o-mini') {
+      return '';
+    }
+    return saved || '';
+  });
   
+  const [serverDefaultModel, setServerDefaultModel] = useState('Loading...');
   const [freeModels, setFreeModels] = useState<{id: string, name: string}[]>([]);
   const [isLoadingOpenRouterModels, setIsLoadingOpenRouterModels] = useState(false);
   const [pollinationsModel, setPollinationsModel] = useState(
@@ -417,6 +423,21 @@ CORE BEHAVIOR:
     
     fetchModels();
   }, [provider]);
+
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const res = await fetch('/api/config');
+        if (res.ok) {
+          const data = await res.json();
+          setServerDefaultModel(data.DEFAULT_OPENROUTER_MODEL);
+        }
+      } catch (err) {
+        console.error('Failed to fetch config', err);
+      }
+    };
+    fetchConfig();
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('promptsmith_provider', provider);
@@ -1041,7 +1062,7 @@ CORE BEHAVIOR:
               <div className="space-y-8">
                 <div>
                   <label className="block text-[10px] uppercase tracking-[0.15em] font-mono text-[#555] mb-4">AI Provider</label>
-                  <div className="flex gap-8">
+                  <div className="flex flex-wrap gap-4 sm:gap-6">
                     <button 
                       onClick={() => setProvider('openrouter')}
                       className={cn(
@@ -1138,7 +1159,7 @@ CORE BEHAVIOR:
                             onChange={(e) => setOpenrouterModel(e.target.value)}
                             className="w-full bg-transparent border-b border-[#E2E2DE] py-2 font-serif text-lg focus:outline-none focus:border-[#0F0F0F] transition-colors appearance-none cursor-pointer"
                           >
-                            <option value="google/gemini-2.0-flash-lite-preview-02-05:free">Google: Gemini 2.0 Flash Lite Preview (free)</option>
+                            <option value="">Server Default ({serverDefaultModel})</option>
                             {freeModels.length > 0 && freeModels.map((model) => (
                               <option key={model.id} value={model.id}>{model.name}</option>
                             ))}
