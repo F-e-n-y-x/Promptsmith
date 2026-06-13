@@ -277,8 +277,11 @@ export default function App() {
     () => localStorage.getItem('promptsmith_openrouterApiKey') || ''
   );
   const [openrouterModel, setOpenrouterModel] = useState(
-    () => localStorage.getItem('promptsmith_openrouterModel') || 'openai/gpt-4o-mini'
+    () => localStorage.getItem('promptsmith_openrouterModel') || 'google/gemini-2.0-flash-lite-preview-02-05:free'
   );
+  
+  const [freeModels, setFreeModels] = useState<{id: string, name: string}[]>([]);
+  const [isLoadingOpenRouterModels, setIsLoadingOpenRouterModels] = useState(false);
   const [pollinationsModel, setPollinationsModel] = useState(
     () => localStorage.getItem('promptsmith_pollinationsModel') || 'openai'
   );
@@ -384,6 +387,36 @@ CORE BEHAVIOR:
       }).catch(err => console.error('Failed to save session', err));
     }
   }, [messages, finalPrompt, sessionId]);
+
+  useEffect(() => {
+    // Fetch free models from OpenRouter when provider is openrouter
+    const fetchModels = async () => {
+      if (provider !== 'openrouter') return;
+      if (freeModels.length > 0) return;
+      
+      setIsLoadingOpenRouterModels(true);
+      try {
+        const res = await fetch('https://openrouter.ai/api/v1/models');
+        if (!res.ok) throw new Error('Failed to fetch models');
+        const data = await res.json();
+        
+        // Filter for truly free models based on pricing
+        const filtered = data.data.filter((model: any) => {
+          return model.pricing && 
+                 Number(model.pricing.prompt) === 0 && 
+                 Number(model.pricing.completion) === 0;
+        });
+        
+        setFreeModels(filtered);
+      } catch (err) {
+        console.error('Error fetching OpenRouter models:', err);
+      } finally {
+        setIsLoadingOpenRouterModels(false);
+      }
+    };
+    
+    fetchModels();
+  }, [provider]);
 
   useEffect(() => {
     localStorage.setItem('promptsmith_provider', provider);
@@ -666,7 +699,15 @@ CORE BEHAVIOR:
           throw new Error('LIMIT_REACHED');
         }
 
-        if (!res.ok) throw new Error('OpenRouter API error');
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          // If a text-only model is used but image is provided, OpenRouter typically throws a 400 with a specific modality error
+          if (res.status === 400 && errData.error?.message?.toLowerCase().includes('image')) {
+            throw new Error('MODEL_IMAGE_ERROR');
+          }
+          throw new Error(errData.error?.message || 'OpenRouter API error');
+        }
+        
         const data = await res.json();
         rawText = data.choices?.[0]?.message?.content || '';
       } else if (provider === 'ollama') {
@@ -737,6 +778,8 @@ CORE BEHAVIOR:
       
       if (error.message === 'LIMIT_REACHED') {
         errorMessage = "⏳ **Usage Limit Reached!**\n\nYou've hit the public usage limit. Please open **Settings** (gear icon) and enter the **Master Code** or your own **OpenRouter API Key** to continue.";
+      } else if (error.message === 'MODEL_IMAGE_ERROR') {
+        errorMessage = "🖼️ **Image Not Supported**\n\nThe OpenRouter model you selected does not support image analysis. Please select a multimodal model (like a Gemini model) from the Settings, or remove the uploaded image and try again.";
       } else if (error.message === 'Missing Gemini API Key') {
         errorMessage = "🚨 **Missing API Key**\n\nPlease open Settings (gear icon) and enter your Google Gemini API Key to continue.";
       } else if (provider === 'ollama' && error.message === 'Failed to fetch') {
@@ -1086,14 +1129,24 @@ CORE BEHAVIOR:
                         </p>
                       </div>
                       <div>
-                        <label className="block text-[10px] uppercase tracking-[0.15em] font-mono text-[#555] mb-2">Model</label>
-                        <input 
-                          type="text" 
-                          value={openrouterModel}
-                          onChange={(e) => setOpenrouterModel(e.target.value)}
-                          placeholder="openai/gpt-4o-mini"
-                          className="w-full bg-transparent border-b border-[#E2E2DE] py-2 font-serif text-lg focus:outline-none focus:border-[#0F0F0F] transition-colors"
-                        />
+                        <label className="block text-[10px] uppercase tracking-[0.15em] font-mono text-[#555] mb-2">Model (Free Models Only)</label>
+                        {isLoadingOpenRouterModels ? (
+                          <div className="text-sm font-mono text-[#888] py-2 animate-pulse">Loading free models from OpenRouter...</div>
+                        ) : (
+                          <select 
+                            value={openrouterModel}
+                            onChange={(e) => setOpenrouterModel(e.target.value)}
+                            className="w-full bg-transparent border-b border-[#E2E2DE] py-2 font-serif text-lg focus:outline-none focus:border-[#0F0F0F] transition-colors appearance-none cursor-pointer"
+                          >
+                            <option value="google/gemini-2.0-flash-lite-preview-02-05:free">Google: Gemini 2.0 Flash Lite Preview (free)</option>
+                            {freeModels.length > 0 && freeModels.map((model) => (
+                              <option key={model.id} value={model.id}>{model.name}</option>
+                            ))}
+                          </select>
+                        )}
+                        <p className="text-xs font-mono text-[#888] mt-2">
+                          Automatically populated with 100% free models. Some models do not support images.
+                        </p>
                       </div>
                     </motion.div>
                   )}

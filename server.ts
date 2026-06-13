@@ -191,7 +191,7 @@ app.post('/api/chat/openrouter', async (req, res) => {
         'X-Title': 'Promptsmith'
       },
       body: JSON.stringify({
-        model: model || 'openai/gpt-4o-mini',
+        model: model || process.env.DEFAULT_OPENROUTER_MODEL || 'google/gemini-2.0-flash-lite-preview-02-05:free',
         messages: messages
       })
     });
