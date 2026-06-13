@@ -1,0 +1,9 @@
+node_modules
+dist
+.env
+.git
+history
+usage
+npm-debug.log
+yarn-error.log
+.github
