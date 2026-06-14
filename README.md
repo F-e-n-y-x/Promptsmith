@@ -1,51 +1,48 @@
 # Promptsmith
 
-Promptsmith is a minimalist, editorial-style prompt refinement tool. It acts as an expert prompt engineer, engaging you in a "Plan Mode" chat to ask clarifying questions about your initial ideas, and then automatically crafts and extracts a highly optimized prompt for your AI workflows.
+Promptsmith is an elegant, editorial-style interface designed for prompt engineering. It acts as an interactive bridge between your raw ideas and highly optimized AI prompts.
 
-## ✨ Features
+Instead of writing a prompt from scratch, you provide Promptsmith with a rough concept or an image. The application then enters a conversational "Plan Mode," asking clarifying multiple-choice and open-ended questions. Once it has enough context, it synthesizes your inputs and outputs a robust, production-ready prompt that you can copy or export.
 
-- **Editorial Aesthetic:** A beautiful, distraction-free split-pane interface featuring classic serif typography (Cormorant Garamond) paired with precise monospace accents (JetBrains Mono).
-- **Plan Mode Chat:** An interactive assistant that helps refine your ideas through targeted questions before generating the final prompt.
-- **Multimodal Support:** Upload sketches, screenshots, or reference images alongside your text to provide visual context to the AI.
-- **Auto-Extraction:** The final optimized prompt is automatically detected and beautifully presented in a dedicated output pane with a one-click copy button.
-- **Tri-Provider AI Support:** 
-  - **Google Gemini:** Powered by the Gemini 3 Flash Preview model for lightning-fast, high-quality reasoning.
-  - **Ollama (Local):** Full support for running local, private models via Ollama.
-  - **Pollinations AI:** Access to various top-tier models (GPT-4o, Claude, DeepSeek) through Pollinations.
-- **Persistent Local History:** Your sessions, images, and prompts are securely saved to a local `history` folder on your hard drive, bypassing browser limits.
-- **Docker Ready:** Includes a lightweight, multi-architecture Dockerfile for easy deployment.
+## Architecture & Features
 
-## 🚀 Getting Started
+Promptsmith is built with a React 19 frontend and a Node.js/Express backend. 
 
-### Prerequisites
-- Node.js (v18 or higher)
-- A Google Gemini API Key (if using Gemini)
-- [Ollama](https://ollama.com/) (if using local models)
+* **Tri-Provider AI Integration:** Natively supports Google Gemini, OpenRouter, and local models via Ollama. It dynamically fetches available models and handles multimodal inputs (text + images).
+* **Conversational Refinement:** The assistant doesn't just output a prompt; it interviews you to extract missing constraints, target audience, tone, and formatting requirements.
+* **Intelligent Auto-Extraction:** Once the assistant finishes the interview, it automatically extracts the final prompt into a dedicated, clean viewing pane.
+* **Local First:** All chat history, image uploads, and generated prompts are stored locally in a `history` directory. No data is sent to a central database.
+* **Usage Limits & Master Code:** The backend includes a rate-limiter for public deployments, which can be entirely bypassed by providing a predefined Master Code in the UI.
 
-### Installation
+## Getting Started
 
-1. Clone the repository and install dependencies:
+### Local Development
+
+1. **Install Dependencies**
    ```bash
    npm install
    ```
 
-2. Set up your environment variables:
-   Create a `.env` file in the root directory and add your Gemini API key:
+2. **Environment Configuration**
+   Create a `.env` file in the root directory:
    ```env
-   GEMINI_API_KEY="your_api_key_here"
+   # Required for OpenRouter integration
+   OPENROUTER_API_KEY=sk-or-...
+   DEFAULT_OPENROUTER_MODEL=google/gemini-2.0-flash-lite-preview-02-05:free
+   
+   # Optional: Bypass code for rate limits
+   MASTER_CODE=your_secret_code
    ```
 
-3. Start the development server (this automatically starts both the React frontend and the Express backend for file saving):
+3. **Run the Application**
+   Start both the Vite frontend and Express backend concurrently:
    ```bash
    npm run dev
    ```
 
-## 🦙 Using Ollama (Local Models)
+### Local Models (Ollama)
 
-To use local models, you must start your Ollama server with Cross-Origin Resource Sharing (CORS) enabled, otherwise, the web browser will block the connection.
-
-1. Quit the Ollama app if it is currently running in your system tray/menu bar.
-2. Open your terminal and start Ollama with the following command:
+If you intend to use local models, you must start your Ollama server with cross-origin requests enabled so the browser can connect to it:
 
 **Mac/Linux:**
 ```bash
@@ -57,34 +54,12 @@ OLLAMA_ORIGINS="*" ollama serve
 set OLLAMA_ORIGINS="*" && ollama serve
 ```
 
-3. Open the Settings modal in Promptsmith (gear icon), select "Ollama", and choose your model from the auto-detected dropdown list.
+### Docker Deployment
 
-## 🐳 Docker Deployment
-
-Promptsmith includes a multi-stage Dockerfile that builds the static assets and serves them using a Node.js backend.
-
-The easiest way to run Promptsmith is to pull the automatically built image from the GitHub Container Registry:
-
-```bash
-# Pull the latest image
-docker pull ghcr.io/f-e-n-y-x/promptsmith:main
-
-# Run the container (with persistent history)
-docker run -d -p 8080:3001 -v ./history:/app/history ghcr.io/f-e-n-y-x/promptsmith:main
-```
-
-Alternatively, you can build it locally using `docker-compose`:
+Promptsmith is fully containerized. The `Dockerfile` compiles the React frontend and serves it statically via the Express backend, ensuring zero CORS issues and a single-port deployment.
 
 ```bash
 docker-compose up -d --build
 ```
 
-## 🛠️ Tech Stack
-
-- **Framework:** React 19 + Vite + Express (Backend)
-- **Styling:** Tailwind CSS v4
-- **Animation:** Motion (Framer Motion)
-- **Icons:** Lucide React
-- **Markdown:** React Markdown
-- **AI SDK:** `@google/genai`
-- **History Storage:** Node.js `fs` module
+If deploying via Portainer, simply point your stack to this repository and expose port `80`. Ensure you mount a volume for `/app/history` if you want chat sessions to persist across container restarts.
