@@ -1,6 +1,6 @@
 # Promptsmith
 
-![Promptsmith Interface](.github/assets/hero.png)
+![Promptsmith Interface](screenshots/screencapture-promptsmith-ayushsoni-eu-org-2026-06-14-17_26_17.png)
 
 Promptsmith is an elegant, editorial-style interface designed for prompt engineering. It acts as an interactive bridge between your raw ideas and highly optimized AI prompts.
 
